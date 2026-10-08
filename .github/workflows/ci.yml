@@ -1,0 +1,207 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: store_ci
+          POSTGRES_USER: store_ci
+          POSTGRES_PASSWORD: store_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U store_ci -d store_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://store_ci:store_ci_only@localhost:5432/store_ci
+      ADMIN_EMAIL: ci-admin@example.invalid
+      ADMIN_PASSWORD_HASH: ""
+      CORS_ORIGINS: http://localhost:3000
+      COOKIE_SECURE: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Apply database migrations
+        run: alembic upgrade head
+
+      - name: Seed disposable test database
+        run: python -m seed.main
+
+      - name: Run backend tests
+        run: pytest -q
+
+  frontend-tests:
+    name: Frontend Tests and Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm run test -- --run
+
+      - name: Build frontend
+        run: npm run build
+
+  docker-e2e:
+    name: Docker Build, Runtime Smoke, and E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs:
+      - backend-tests
+      - frontend-tests
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install E2E dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Create disposable Compose environment
+        shell: bash
+        run: |
+          umask 077
+          cat > .env <<'EOF'
+          ENVIRONMENT=production
+          DOMAIN=localhost
+          HTTP_PORT=8080
+          HTTPS_PORT=443
+          DATABASE_URL=postgresql+asyncpg://store_ci:store_ci_only@postgres:5432/store_ci
+          ADMIN_EMAIL=ci-admin@example.invalid
+          ADMIN_PASSWORD_HASH=
+          CORS_ORIGINS=https://localhost
+          COOKIE_SECURE=true
+          POSTGRES_DB=store_ci
+          POSTGRES_USER=store_ci
+          POSTGRES_PASSWORD=store_ci_only
+          VITE_API_ORIGIN=
+          EOF
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build Docker images
+        run: docker compose build
+
+      - name: Generate ephemeral E2E admin credentials
+        shell: bash
+        run: |
+          password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$password"
+          password_hash="$(
+            docker compose run --rm --no-deps \
+              -e CI_ADMIN_PASSWORD="$password" \
+              --entrypoint python backend \
+              -c 'import os; from pwdlib import PasswordHash; print(PasswordHash.recommended().hash(os.environ["CI_ADMIN_PASSWORD"]))'
+          )"
+          printf "ADMIN_PASSWORD_HASH='%s'\n" "$password_hash" >> .env
+          {
+            printf 'E2E_ADMIN_EMAIL=ci-admin@example.invalid\n'
+            printf 'E2E_ADMIN_PASSWORD=%s\n' "$password"
+            printf 'E2E_BASE_URL=https://localhost\n'
+          } >> "$GITHUB_ENV"
+
+      - name: Start Dockerized application
+        run: docker compose up -d --wait --wait-timeout 180
+
+      - name: Seed disposable E2E database
+        run: docker compose exec -T backend python -m seed.main
+
+      - name: Verify PostgreSQL readiness
+        run: docker compose exec -T postgres pg_isready -U store_ci -d store_ci
+
+      - name: Smoke-test backend and frontend through Caddy
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --insecure \
+            --retry 30 --retry-connrefused --retry-delay 2 \
+            https://localhost/health
+          printf '\n'
+
+          products="$(
+            curl --fail --silent --show-error --insecure \
+              https://localhost/api/v1/products
+          )"
+          node -e '
+            const result = JSON.parse(process.argv[1]);
+            if (!Array.isArray(result.data) || result.data.length === 0) {
+              throw new Error("The live products API returned no products.");
+            }
+          ' "$products"
+
+          curl --fail --silent --show-error --insecure \
+            --retry 30 --retry-connrefused --retry-delay 2 \
+            --output /dev/null https://localhost/
+          curl --fail --silent --show-error --insecure \
+            --retry 30 --retry-connrefused --retry-delay 2 \
+            --output /dev/null https://localhost/products/1
+
+          docker compose ps
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run real-browser E2E tests
+        working-directory: frontend
+        run: npm run e2e
+
+      - name: Stop Dockerized application
+        if: always()
+        run: docker compose down --remove-orphans
