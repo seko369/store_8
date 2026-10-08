@@ -1,0 +1,14 @@
+.git
+.gitignore
+node_modules
+npm-debug.log*
+dist
+coverage
+.env
+.env.*
+e2e
+playwright.config.ts
+tsconfig.e2e.json
+playwright-report
+test-results
+__pycache__

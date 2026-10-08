@@ -1,0 +1,26 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.*
+!.env.example
+backend/.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Database
+postgres_data/
+
+# Uploads
+uploads/*
+!uploads/products/.gitkeep
+
+# Tooling
+.pytest_cache/
+coverage/
+*.log

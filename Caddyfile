@@ -1,0 +1,20 @@
+{$DOMAIN} {
+	@backend path /api/* /uploads/* /health
+
+	request_body {
+		max_size 6MB
+	}
+
+	reverse_proxy @backend backend:8000
+	reverse_proxy frontend:80
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000"
+}

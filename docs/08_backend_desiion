@@ -1,0 +1,162 @@
+قدم بعدی رو توضیح بده و بگو چه تصمیم هایی نیازه 
+
+قدم بعدی ما ساخت پایه‌ی واقعی Backend است؛ یعنی قبل از ساخت Product API، زیرساخت FastAPI را آماده می‌کنیم:
+
+Backend Foundation
+↓
+FastAPI
+↓
+Config / Environment
+↓
+Database Connection
+↓
+SQLAlchemy
+↓
+Alembic
+↓
+Main App
+↓
+بعداً Models → Repositories → Services → API
+
+فعلاً هنوز Product API نمی‌نویسیم؛ اول باید Backend بتواند درست اجرا شود و به PostgreSQL وصل شود.
+
+تصمیم‌های لازم
+#	تصمیم	پیشنهاد من
+1	نسخه Python	3.12
+2	مدیریت محیط Python	venv
+3	Package Manager	pip
+4	FastAPI Server	Uvicorn
+5	SQLAlchemy	SQLAlchemy 2.x
+6	نوع اتصال DB	Async
+7	Driver PostgreSQL	asyncpg
+8	Config	Pydantic Settings
+9	Environment	.env + .env.example
+10	Database اجرا	Docker PostgreSQL
+11	Migration	Alembic
+12	CORS	فقط localhost:5173 در Development
+13	DI	FastAPI Depends
+14	Logging اولیه	Python logging استاندارد
+15	ساختار API	/api/v1
+مهم‌ترین تصمیمی که باید خودت بگیری
+
+فقط یک مورد را می‌خواهم از تو انتخاب کنم:
+
+اتصال Async به PostgreSQL یا Sync؟
+
+A — Async ✅ پیشنهاد من
+
+FastAPI Async
+      ↓
+SQLAlchemy Async
+      ↓
+asyncpg
+      ↓
+PostgreSQL
+
+برای FastAPI و پروژه‌ای که بعداً ممکن است APIهای AI و درخواست‌های همزمان داشته باشد، انتخاب خوبی است.
+
+B — Sync
+
+FastAPI
+   ↓
+SQLAlchemy Sync
+   ↓
+PostgreSQL
+
+ساده‌تر است، ولی در پروژه‌ای که می‌خواهیم الگوی مدرن‌تر Backend را تمرین کنیم، من A را ترجیح می‌دهم.
+
+A یا B؟
+
+Send to Claude
+This might also interest you.
+
+Distart
+
+Prozesse automatisieren
+
+Mit Make, Zapier und n8n Workflows intern bauen.
+
+Ad
+More options
+A
+
+عالی. پس Async Stack را نهایی کردیم:
+
+FastAPI
+   ↓
+SQLAlchemy 2.x Async
+   ↓
+asyncpg
+   ↓
+PostgreSQL
+سؤال بعدی — PostgreSQL را چطور اجرا کنیم؟
+
+A — Docker ✅ پیشنهاد من
+
+Docker
+└── PostgreSQL
+
+مزیت: محیط Database مستقل از سیستم توست، نصب و پاک‌کردن ساده‌تر است و بعداً برای Deploy هم مسیرمان طبیعی‌تر می‌شود.
+
+B — نصب مستقیم روی Ubuntu
+
+Ubuntu
+└── PostgreSQL
+
+ساده است، ولی محیط توسعه بیشتر به سیستم عامل وابسته می‌شود.
+
+برای پروژه‌ای که می‌خواهی معماری و Vibe Coding را تمرین کنی، A را پیشنهاد می‌کنم.
+
+A یا B؟
+
+Send to Claude
+
+IT-Nerd24 DACH
+
+Ad
+More options
+
+Microsoft SQL Server 2017 Standard Software-Vollversion, Produktschlüssel & Download
+
+€549.99
+
+SQL Server 2019 Standard 2 Core Software-Vollversion, Produktschlüssel & Download
+
+€2,999.95
+
+Windows Server 2016 Essentials Software-Vollversion, Produktschlüssel & Download
+
+€214.99
+
+Microsoft SQL Server 2014 Standard Software-Vollversion, Produktschlüssel & Download
+
+€499.99
+
+Windows Server 2022 RDS - 1 User CAL Software-Vollversion, Produktschlüssel & Download
+
+€109.95
+من با ۱۵ تصمیمی پیشنهادی ات موافقم
+
+عالی. پس تصمیم‌های Backend Foundation قفل شد و دیگر برای این مرحله سؤال معماری جدیدی نداریم.
+
+تصمیم‌های نهایی
+Python            → 3.12
+Environment       → venv
+Package Manager   → pip
+Framework         → FastAPI
+Server            → Uvicorn
+
+ORM               → SQLAlchemy 2.x
+DB Connection     → Async
+Driver            → asyncpg
+Config            → Pydantic Settings
+Environment       → .env
+
+Database          → PostgreSQL
+PostgreSQL اجرا   → Docker
+Migration         → Alembic
+
+CORS              → localhost:5173
+DI                → FastAPI Depends
+Logging           → Python logging
+API Version       → /api/v1
